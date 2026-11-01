@@ -709,6 +709,14 @@ acceptance. Refused admission refunds every claimed batch sibling without spendi
 actual delivery errors keep their bounded retry policy. Recognized raw API routes resolve after
 persisted messaging origins and defer quietly when unavailable; malformed routes still warn.
 
+Before claiming an admitted process completion or liveness tick, the session FIFO rechecks
+whether `process wait/log/kill` consumed its result while the notice was waiting. Only a trusted
+automation notice whose entire batch is consumed is cancelled without inference. Exact process
+IDs are required, and completion spawn timestamps must match; unread failures, mixed batches,
+human inputs and other automation producers retain their normal execution path. Internal notices
+also name `[SILENT]` as the explicit response when already handled with no action or update due;
+an empty response remains an error, not implicit permission to suppress a result.
+
 Cron execution has its own session. Eligible continuable deliveries may mirror or seed the
 reply-facing conversation: origin, origin-less home fallback, user-written bare-platform home,
 or opted-in explicit targets. `all` expansions do not gain home mirror eligibility. Mirrored

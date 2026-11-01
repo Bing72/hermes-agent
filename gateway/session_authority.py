@@ -1063,6 +1063,9 @@ class SessionAuthority:
             if first is not None and live.source.platform == Platform.API_SERVER:
                 from gateway.session_api_turn import check_api_turn
                 check_api_turn(self, ref, first['payload'])
+            from gateway.session_automation import cancel_consumed_process_notice
+            if await cancel_consumed_process_notice(self, first):
+                return False, first
             if first is not None and self._classic_turn_holds(live.route):
                 # A classic turn (fallback wake, CLI handoff, legacy resume) holds the route's slot:
                 # a claim now would hand this row to its busy path and settle it unrun. The head

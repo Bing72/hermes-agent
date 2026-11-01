@@ -228,6 +228,48 @@ def _identities(raws):
     return parsed
 
 
+def _consumed_process_identities(identities):
+    """Require the exact process, not a prefix or another spawn with a reused id."""
+    from tools.process_registry import process_registry
+    for kind, process_id, token in identities:
+        if not process_registry.is_completion_consumed(process_id):
+            return False
+        process = process_registry.get(process_id)
+        if (process is None or process.id != process_id
+                or (kind == 'completion' and process.started_at != token)):
+            return False
+    return True
+
+
+async def cancel_consumed_process_notice(authority, row):
+    """Recheck consumption at the FIFO boundary, not just when a producer enqueues.
+
+    A foreground wait/log/kill can consume the result while its notice is already
+    committed behind that turn. Cancel only a trusted process notice whose entire
+    batch was consumed; a person's lookalike input or an unread sibling must run.
+    """
+    if row is None or row['status'] != 'queued':
+        return False
+    descriptor = _descriptor(row['payload'])
+    route = descriptor.get('route') or (row['payload'].get('native_text_v1') or {}).get('route')
+    if (not isinstance(route, str) or not route or row['principal_id'] != 'automation:' + route
+            or descriptor.get('identity') != row['request_id']):
+        return False
+    raws = [row['request_id'], *(descriptor.get('identities') or ())]
+    identities = _identities(raws)
+    if (len(identities) != len(raws)
+            or any(len(identity) != 3 or identity[0] not in {'completion', 'heartbeat'}
+                   or not isinstance(identity[1], str) or not identity[1] for identity in identities)):
+        return False
+    import asyncio
+    if not await asyncio.to_thread(_consumed_process_identities, identities):
+        return False
+    withdrawn = await _withdraw(authority, row)
+    if withdrawn:
+        logger.info('Cancelled already-consumed process notice %s before inference', row['admission_id'])
+    return withdrawn
+
+
 def _queued_tick(row, process, route):
     """Whether *row* is the gateway's own queued liveness tick of *process* on *route*: the route's
     producer admitted ``["heartbeat", process, event_id]``. A client input whose id merely looks like

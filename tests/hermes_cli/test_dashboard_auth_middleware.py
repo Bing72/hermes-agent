@@ -185,6 +185,36 @@ def _complete_stub_login(client) -> None:
     assert r2.status_code == 302
 
 
+@pytest.mark.parametrize(("origin", "fetch_site"), [
+    ("https://sibling.fly.dev", "same-site"),
+    ("http://localhost:5173", "same-site"),
+    ("https://evil.example", "cross-site"),
+])
+def test_dashboard_refuses_cookie_writes_the_browser_marks_as_another_pages(
+        gated_app, origin, fetch_site):
+    """A sibling page cannot write with dashboard cookies or sign their owner out."""
+    _complete_stub_login(gated_app)
+    cookies_before = dict(gated_app.cookies)
+    headers = {"Origin": origin, "Sec-Fetch-Site": fetch_site}
+    payload = {"identifier": "definitely not a valid identifier", "force": False, "enable": False}
+
+    write = gated_app.post("/api/dashboard/agent-plugins/install", json=payload, headers=headers)
+    assert write.status_code == 403, write.text
+    out = gated_app.post("/auth/logout", headers=headers, follow_redirects=False)
+    assert out.status_code == 403, out.text
+    assert dict(gated_app.cookies) == cookies_before
+
+    own_page = gated_app.post("/api/dashboard/agent-plugins/install", json=payload, headers={
+        "Origin": "https://fly-app.fly.dev", "Sec-Fetch-Site": "same-origin"})
+    assert own_page.status_code == 400, own_page.text
+    no_metadata = gated_app.post("/api/dashboard/agent-plugins/install", json=payload)
+    assert no_metadata.status_code == 400, no_metadata.text
+    token = next(value for name, value in cookies_before.items() if name.endswith(SESSION_AT_COOKIE))
+    bearer = gated_app.post("/api/dashboard/agent-plugins/install", json=payload, headers={
+        **headers, "Authorization": f"Bearer {token}"})
+    assert bearer.status_code == 400, bearer.text
+
+
 def test_gated_require_token_endpoint_accepts_cookie_session(gated_app):
     """Regression: ``_require_token`` endpoints must work under the OAuth gate.
 

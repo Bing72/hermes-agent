@@ -69,6 +69,17 @@ def _safe_next_target(request: Request) -> str:
     return quote(f"{path}?{query}" if query else path, safe="")
 
 
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
+_OTHER_PAGE_WRITE_DETAIL = "Cookie-authenticated writes must come from this dashboard's own page."
+_OTHER_PAGE_FETCH_SITES = frozenset({"same-site", "cross-site"})
+
+
+def _browser_says_other_page(request: Request) -> bool:
+    """Browser Fetch Metadata identifies sibling pages even behind a rewriting proxy."""
+    return any(value.strip().lower() in _OTHER_PAGE_FETCH_SITES
+               for value in request.headers.getlist("sec-fetch-site"))
+
+
 def _unauth_response(request: Request, *, reason: str) -> Response:
     """API routes -> 401 JSON with ``login_url``; HTML routes -> 302 -> /login. fetch() follows a
     302 opaquely into the cross-origin OAuth dance, so API routes never get redirects; the SPA's
@@ -165,8 +176,12 @@ async def gated_auth_middleware(
     # Already authenticated by the token-auth seam (service caller on a registered token
     # route): not a cookie session, must not bounce to /login.
     if (getattr(request.state, "token_authenticated", False)
-            or getattr(request.state, "native_http_principal", None)
-            or _path_is_public(request.url.path)):
+            or getattr(request.state, "native_http_principal", None)):
+        return await call_next(request)
+    other_page = _browser_says_other_page(request)
+    # Logout is public for expired sessions, but still consumes cookies.
+    cookie_logout = other_page and request.url.path == "/auth/logout"
+    if _path_is_public(request.url.path) and not cookie_logout:
         return await call_next(request)
     # RFC 8252 native-app bearer path: the same provider-minted access token the cookie flow
     # stores, verified with the same provider stack, no cookie read or set. A presented-but-
@@ -185,6 +200,10 @@ async def gated_auth_middleware(
 
     at, _rt = read_session_cookies(request)
     provider_hint = read_session_provider(request)
+    if other_page and (at or _rt) and request.method not in _SAFE_METHODS:
+        return JSONResponse(status_code=403, content={"detail": _OTHER_PAGE_WRITE_DETAIL})
+    if cookie_logout:
+        return await call_next(request)
     if not at and not _rt:
         # No session at all: try the silent portal bounce before /login.
         auto = _auto_sso_response(request)

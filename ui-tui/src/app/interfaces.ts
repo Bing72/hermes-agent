@@ -403,6 +403,8 @@ export interface ComposerActions {
   clearIn: () => void
   stage?: (text: string, display?: string, destination?: SubmissionDestination, attachments?: QueueItem['attachments']) => QueueItem
   dequeue: (retry?: boolean) => QueueItem | undefined
+  /** Clear the composer after saving its expanded text to normal input history. */
+  discardIn: () => void
   enqueue: (text: string, display?: string, destination?: SubmissionDestination, attachments?: QueueItem['attachments']) => QueueItem | void
   handleTextPaste: (event: PasteEvent) => MaybePromise<ComposerPasteResult | null>
   openEditor: () => Promise<void>

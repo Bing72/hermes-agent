@@ -443,8 +443,8 @@ export function useInputHandlers(ctx: InputHandlerContext): InputHandlerResult {
 
   // Double-Esc discards the draft, matching Claude Code / Gemini CLI. It
   // sits above the isBlocked early-return so a prompt overlay cannot swallow
-  // it. Ctrl+C now clears a non-empty composer even mid-stream; Esc Esc is
-  // still the dedicated discard (pushes the draft to history so Up recalls it).
+  // it. Ctrl+C clears a non-empty composer even mid-stream; both gestures
+  // share the discard/history path so Up recalls the cleared draft.
   const lastEscRef = useRef(0)
 
   useInput((ch, key, event) => {
@@ -484,11 +484,7 @@ export function useInputHandlers(ctx: InputHandlerContext): InputHandlerResult {
           }
 
           if (escAction === 'clear') {
-            if (cState.input.trim()) {
-              cActions.pushHistory(cState.input)
-            }
-
-            return cActions.clearIn()
+            return cActions.discardIn()
           }
         }
       }
@@ -774,7 +770,7 @@ export function useInputHandlers(ctx: InputHandlerContext): InputHandlerResult {
       })
 
       if (ctrlC === 'clear') {
-        return cActions.clearIn()
+        return cActions.discardIn()
       }
 
       if (ctrlC === 'interrupt' && live.sid) {

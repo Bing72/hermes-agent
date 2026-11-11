@@ -914,11 +914,9 @@ class CLITuiMixin:
         return True
 
     def _tui_clear_or_exit(self, event) -> None:
-        """Clear text/images like bash; exit when everything is already empty."""
+        """Discard text/images with history recall; exit when everything is already empty."""
         if event.app.current_buffer.text or self._attached_images:
-            event.app.current_buffer.reset()
-            self._attached_images.clear()
-            event.app.invalidate()
+            self._tui_handle_double_escape(event)
         else:
             self._should_exit = True
             event.app.exit()
@@ -1045,16 +1043,16 @@ class CLITuiMixin:
     def _tui_handle_double_escape(self, event):
         """Double ESC discards the draft and attached images (Claude Code / Gemini CLI gesture).
 
-        Works while the agent streams — the gap Ctrl+C leaves (it interrupts the turn and only
-        clears the draft when idle). The draft is appended to history first so Up recalls it,
-        which is what makes a reflex key safe. Single ESC is the Alt-sequence prefix
+        Ctrl+C and Ctrl+Q share this discard path when a draft is present. History stores
+        the expanded text so Up recalls it. Single ESC is the Alt-sequence prefix
         (escape+enter/g/v) so the escape-timeout keeps those distinct; modal prompts bind ESC
         eagerly and are excluded so cancel still wins.
         """
         buf = event.app.current_buffer
         if not (buf.text or self._attached_images):
             return
-        buf.reset(append_to_history=bool(buf.text))
+        self._inline_pastes(buf)
+        buf.reset(append_to_history=bool(buf.text.strip()))
         self._attached_images.clear()
         event.app.invalidate()
 

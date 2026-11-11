@@ -8,7 +8,7 @@ import { useStore } from '@nanostores/react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 
 import type { PasteEvent } from '../components/textInput.js'
-import { droppedTokens, imageToken, nextImageIndex } from '../domain/attachments.js'
+import { droppedTokens, expandTokens, imageToken, nextImageIndex } from '../domain/attachments.js'
 import type { ClipboardPasteResponse, ImageAttachResponse, InputDetectDropResponse } from '../gatewayTypes.js'
 import { useCompletion } from '../hooks/useCompletion.js'
 import { useInputHistory } from '../hooks/useInputHistory.js'
@@ -121,11 +121,13 @@ export function looksLikeDroppedPath(text: string): boolean {
 export function useComposerState({ gw, submitRef, sys }: UseComposerStateOptions): UseComposerStateResult {
   const [input, setInputState] = useState('')
   const [inputBuf, setInputBufState] = useState<string[]>([])
+  const inputBufRef = useRef<string[]>([])
   const composerRevision = useRef(0)
 
   const setInputBuf = useCallback<StateSetter<string[]>>(next => {
     composerRevision.current++
-    setInputBufState(next)
+    inputBufRef.current = typeof next === 'function' ? next(inputBufRef.current) : next
+    setInputBufState(inputBufRef.current)
   }, [])
 
   const [tokens, setTokens] = useState<ComposerToken[]>([])
@@ -175,6 +177,13 @@ export function useComposerState({ gw, submitRef, sys }: UseComposerStateOptions
     setHistoryIdx(null)
     historyDraftRef.current = ''
   }, [historyDraftRef, setComposerTokens, setHistoryIdx, setInput, setInputBuf, setQueueEdit])
+
+  const discardIn = useCallback(() => {
+    const draft = expandTokens(tokensRef.current)([...inputBufRef.current, inputRef.current].join('\n'))
+
+    pushHistory(draft)
+    clearIn()
+  }, [clearIn, pushHistory])
 
   /**
    * Deleting an `[[ Image N ]]` token IS how you unattach the image — there is
@@ -561,6 +570,7 @@ export function useComposerState({ gw, submitRef, sys }: UseComposerStateOptions
       clearIn,
       stage,
       dequeue,
+      discardIn,
       enqueue,
       handleTextPaste,
       openEditor,
@@ -583,6 +593,7 @@ export function useComposerState({ gw, submitRef, sys }: UseComposerStateOptions
       clearIn,
       stage,
       dequeue,
+      discardIn,
       enqueue,
       handleTextPaste,
       openEditor,

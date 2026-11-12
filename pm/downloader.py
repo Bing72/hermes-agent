@@ -46,8 +46,18 @@ from pm.network import edge_block, is_transient, retry_network
 # their docs require a real User-Agent. A browser-shaped one is the
 # least-privileged string every asset CDN accepts.
 _UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) hermes-pm/1.0", "Accept-Encoding": "identity"}
-_LOOPBACK = ("http://127.0.0.1:", "http://localhost:", "http://[::1]:")
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 _CHUNK = 1 << 20  # read/write block, also the minimum range size
+
+
+def _loopback(url: str) -> bool:
+    """Allow plain HTTP for local test servers with a loopback host and no userinfo."""
+    try:
+        parts = urllib.parse.urlsplit(url)
+        host = parts.hostname
+    except ValueError:  # malformed bracketed host
+        return False
+    return parts.scheme == "http" and "@" not in parts.netloc and host in _LOOPBACK_HOSTS
 
 
 class _HttpsRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -59,7 +69,7 @@ class _HttpsRedirectHandler(urllib.request.HTTPRedirectHandler):
         # Plain-http loopback exists for test servers, and only a download that
         # started on loopback may stay there: an https origin bouncing to a local
         # listener would hand an unpinned model file to whatever is bound there.
-        loopback = req.full_url.startswith(_LOOPBACK) and newurl.startswith(_LOOPBACK)
+        loopback = _loopback(req.full_url) and _loopback(newurl)
         if not (newurl.startswith("https://") or loopback):
             raise DownloadError(f"refusing redirect to non-https url: {newurl}")
         # urllib preserves our User-Agent and range headers. Do not re-add
@@ -294,7 +304,7 @@ class Download:
             if source.fallbacks and not re.fullmatch(r"[a-f0-9]{64}", source.sha256):
                 raise ValueError("mirror fallback requires a full lowercase SHA256")
             for url in (source.url, *source.fallbacks):
-                if not (url.startswith("https://") or url.startswith(_LOOPBACK)):
+                if not (url.startswith("https://") or _loopback(url)):
                     raise ValueError(f"refusing non-https url: {url}")
 
         # Probe the whole plan before reporting a denominator. A missing

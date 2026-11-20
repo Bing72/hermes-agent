@@ -296,9 +296,8 @@ DEFAULT_CONTEXT_LENGTHS = {
     "claude-opus-4-8": 1000000, "claude-opus-4.8": 1000000, "claude-opus-4-7": 1000000, "claude-opus-4.7": 1000000,
     "claude-opus-4-6": 1000000, "claude-sonnet-4-6": 1000000, "claude-opus-4.6": 1000000, "claude-sonnet-4.6": 1000000,
     "claude": 200000,  # catch-all for older Claude models
-    # OpenAI — direct-API windows (Codex OAuth caps gpt-5.4+/5.5/5.6 at 272K, resolved by
-    # its own branch). 5.4-nano/-mini are 400k, not 1.05M; gpt-5.3-codex-spark is
-    # Codex-OAuth-only and listed so "gpt-5" (400k) doesn't win.
+    # OpenAI direct-API windows (Codex OAuth has its own caps). 5.4-nano/-mini are 400k, not 1.05M;
+    # gpt-5.3-codex-spark is OAuth-only and listed so "gpt-5" (400k) doesn't win.
     "gpt-6.2-astra": 1050000, "gpt-6.2-sol": 1050000,
     "gpt-6-astra": 1050000,  # also matches -pro (verified live on OpenRouter)
     "gpt-6.1-sol": 1050000,  # -pro too (OpenAI model page + OpenRouter live 2026-09-29)

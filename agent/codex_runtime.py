@@ -589,11 +589,18 @@ def _codex_turn_effort(agent, model: str | None) -> str | None:
 
 
 def _codex_turn_service_tier(agent) -> str | None:
-    """``turn/start.serviceTier``: the tier Hermes' own Responses path would request this turn (a static
-    ``/fast`` tier pinned in request_overrides, or an open ``auto``/``cold`` window), in codex's words: the
-    OpenAI ``priority`` tier is codex's ``fast``. A tier codex has no word for (``ultrafast``) is not sent."""
+    """Translate Hermes' effective speed into the Codex app-server tier vocabulary."""
     from agent.fast_mode import CODEX_TIER_WORDS, effective_request_overrides
-    return CODEX_TIER_WORDS.get(effective_request_overrides(agent).get("service_tier"))
+
+    tier = effective_request_overrides(agent).get("service_tier")
+    if tier == "ultrafast":
+        from hermes_cli.models import resolve_fast_mode_overrides
+        if resolve_fast_mode_overrides(
+            getattr(agent, "model", None), provider=getattr(agent, "provider", None),
+            base_url=getattr(agent, "base_url", None), tier=tier,
+        ) is None:
+            return None
+    return CODEX_TIER_WORDS.get(tier)
 
 
 def _ensure_codex_session(agent, messages: list[dict[str, Any]] | None = None) -> None:

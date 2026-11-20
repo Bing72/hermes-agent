@@ -50,13 +50,13 @@ def fake_session(monkeypatch):
     )
 
 
-def _make_codex_agent(**kwargs):
+def _make_codex_agent(*, base_url="https://stub.invalid", **kwargs):
     """Construct an AIAgent in codex_app_server mode without contacting any
     real provider. We pass api_mode explicitly so the constructor takes the
     fast path for direct credentials."""
     return run_agent.AIAgent(
         api_key="stub",
-        base_url="https://stub.invalid",
+        base_url=base_url,
         provider="openai",
         api_mode="codex_app_server",
         quiet_mode=True,
@@ -70,18 +70,21 @@ def _make_codex_agent(**kwargs):
 
 class TestRunConversationCodexPath:
     @pytest.mark.parametrize(
-        "reasoning_config,service_tier,expected_effort,expected_tier",
+        "model,base_url,reasoning_config,service_tier,expected_effort,expected_tier",
         [
-            ({"enabled": True, "effort": "high"}, "priority", "high", "fast"),
-            ({"enabled": False}, None, "none", None),
+            ("gpt-5.4", "https://stub.invalid", {"enabled": True, "effort": "high"}, "priority", "high", "fast"),
+            ("gpt-5.4", "https://stub.invalid", {"enabled": False}, None, "none", None),
             # Hermes-only levels are clamped to the route's vocabulary: gpt-5.4 has no `max`, so ultra goes out as xhigh.
-            # A tier codex has no word for is not sent.
-            ({"enabled": True, "effort": "ultra"}, "ultrafast", "xhigh", None),
+            ("gpt-5.4", "https://api.openai.com/v1", {"enabled": True, "effort": "ultra"}, "ultrafast", "xhigh", None),
+            ("gpt-6.2-sol", "https://api.openai.com/v1", {"enabled": True, "effort": "high"}, "ultrafast", "high", "ultrafast"),
+            ("gpt-6.2-sol", "https://stub.invalid", {"enabled": True, "effort": "high"}, "ultrafast", "high", None),
         ],
     )
     def test_effective_runtime_settings_reach_codex_turn(
         self,
         monkeypatch,
+        model,
+        base_url,
         reasoning_config,
         service_tier,
         expected_effort,
@@ -101,7 +104,8 @@ class TestRunConversationCodexPath:
         monkeypatch.setattr(CodexAppServerSession, "run_turn", fake_run_turn)
         monkeypatch.setattr(CodexAppServerSession, "ensure_started", lambda self: "thread-stub-1")
         agent = _make_codex_agent(
-            model="gpt-5.4",
+            model=model,
+            base_url=base_url,
             reasoning_config=reasoning_config,
             service_tier=service_tier,
             # Every surface pins a static /fast tier into request_overrides (resolve_fast_mode_overrides).
@@ -111,7 +115,7 @@ class TestRunConversationCodexPath:
         with patch.object(agent, "_spawn_background_review", return_value=None):
             agent.run_conversation("hello")
 
-        assert captured["model"] == "gpt-5.4"
+        assert captured["model"] == model
         assert captured["reasoning_effort"] == expected_effort
         assert captured["service_tier"] == expected_tier
 

@@ -123,7 +123,8 @@ def test_ultrafast_is_offered_on_the_codex_plan_only_when_its_catalog_lists_it(m
 
     def get(url, **kwargs):
         tiers = {"A": {"gpt-6-astra": ["priority", "ultrafast"], "gpt-6.1-sol": ["priority"]},
-                 "B": {"gpt-6-astra": ["priority", "ultrafast"], "gpt-6.1-sol": ["priority", "ultrafast"]}}
+                 "B": {"gpt-6.1-sol": ["priority", "ultrafast"], "gpt-6.2-sol": ["priority", "ultrafast"],
+                       "gpt-6.2-astra": ["priority"]}}
         account = kwargs["headers"]["ChatGPT-Account-ID"]
         return SimpleNamespace(status_code=200, json=lambda: {"models": [
             {"slug": slug, "context_window": 272000, "service_tiers": [{"id": t} for t in ids]}
@@ -134,7 +135,22 @@ def test_ultrafast_is_offered_on_the_codex_plan_only_when_its_catalog_lists_it(m
     assert ultrafast_offered("gpt-6-astra", **codex, access_token=token("A"))
     assert not ultrafast_offered("gpt-6.1-sol-900k", **codex, access_token=token("A"))  # plan lacks Sol Ultrafast
     assert ultrafast_offered("gpt-6.1-sol-900k", **codex, access_token=token("B"))
+    assert ultrafast_offered("gpt-6.2-sol", **codex, access_token=token("B"))
+    assert not ultrafast_offered("gpt-6.2-astra", **codex, access_token=token("B"))
+    assert not ultrafast_offered("gpt-6.2-sol", provider="custom", base_url="https://proxy.example/v1")
     # The API key route is not plan-gated; an unreadable catalog never refuses.
     assert ultrafast_offered("gpt-6.1-sol", provider="openai-api", base_url="https://api.openai.com/v1")
+    assert ultrafast_offered("gpt-6.2-astra", provider="openai-api", base_url="https://api.openai.com/v1")
+    from hermes_cli.models import resolve_fast_mode_overrides
+    agent = SimpleNamespace(
+        **codex, api_mode="codex_responses", api_key=token("B"), model="gpt-6.2-sol",
+        request_overrides=resolve_fast_mode_overrides("gpt-6.2-sol", **codex, tier="ultrafast"),
+    )
+    wire = ResponsesApiTransport().build_kwargs(
+        model=agent.model, messages=[{"role": "user", "content": "hello"}], tools=[],
+        request_overrides=effective_request_overrides(agent), **codex, is_codex_backend=True,
+    )
+    assert wire["model"] == "gpt-6.2-sol"
+    assert wire["service_tier"] == "ultrafast"
     monkeypatch.setattr(mm.model_metadata_http, "get", lambda url, **kw: SimpleNamespace(status_code=503, json=dict))
     assert ultrafast_offered("gpt-6.1-sol", **codex, access_token=token("C"))
